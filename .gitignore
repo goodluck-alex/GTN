@@ -11,6 +11,11 @@ node_modules/
 !.env.example
 !.env*.example
 
+# --- One-off clean copies used for pushing ---
+admin_push/
+frontend_push/
+frontend_vercel_push/
+
 # --- Logs & debug ---
 logs/
 *.log

@@ -15,7 +15,7 @@ Run **`npx prisma migrate deploy`** once per deploy (e.g. **Render Shell** after
 
 | Variable | Required | Example / notes |
 |----------|----------|------------------|
-| `DATABASE_URL` | **Yes** | From **Render PostgreSQL** (use **External** URL if you need to connect from outside Render). |
+| `DATABASE_URL` | **Yes** | From **Render PostgreSQL** or any hosted Postgres (e.g. **Neon**). Use the provider’s recommended SSL options (often `sslmode=require`). |
 | `JWT_SECRET` | **Yes** | Long random string (customer app JWTs). |
 | `NODE_ENV` | Recommended | `production` (often set automatically). |
 | `PORT` | No | Render sets `PORT`; the app uses `process.env.PORT \|\| 5000`. |
