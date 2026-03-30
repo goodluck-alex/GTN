@@ -1,0 +1,86 @@
+# =============================================================================
+# GTN monorepo — backend, frontend, admin (Next.js, Node, Prisma)
+# =============================================================================
+
+# --- Dependencies ---
+node_modules/
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# --- Logs & debug ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE / editor ---
+.idea/
+*.swp
+*.swo
+*~
+
+# VS Code: ignore local settings unless you opt in with tracked examples
+.vscode/*
+!.vscode/extensions.json
+!.vscode/*.example
+
+# --- Testing & coverage ---
+coverage/
+.nyc_output/
+*.lcov
+
+# --- Backend (Express) ---
+backend/uploads/
+backend/tmp/
+backend/dist/
+backend/build/
+
+# SQLite / local DB files if used
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# --- Frontend & admin (Next.js) ---
+.next/
+out/
+.vercel/
+.turbo/
+
+# Build outputs (any app)
+dist/
+build/
+
+# --- TypeScript ---
+*.tsbuildinfo
+next-env.d.ts
+
+# --- SSL / local certs ---
+*.pem
+
+# --- Package managers ---
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# --- Misc ---
+*.local.cache
+.cache/
+*.pid
+*.seed

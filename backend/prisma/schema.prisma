@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int       @id @default(autoincrement())
+  subscriberId       Int       @unique
+  name               String
+  email              String?   @unique
+  phone              String?   @unique
+  password           String
+  /**
+   * Increment to invalidate all existing JWTs (logout all devices).
+   */
+  tokenVersion       Int       @default(0)
+  /**
+   * Bonus / daily / referral minutes — used for calls when not unlimited
+   */
+  freeMinutes        Float     @default(0)
+  /**
+   * Plan id from Plan table (free/daily/weekly/monthly)
+   */
+  currentPlanId      String?   @default("free")
+  /**
+   * When set and in future, plan is active (used for unlimited plans)
+   */
+  planExpiry         DateTime?
+  createdAt          DateTime  @default(now())
+  /**
+   * UTC calendar day last granted global daily free minutes
+   */
+  lastDailyMinutesAt DateTime?
+  /**
+   * Opaque client device key at signup (fraud signals)
+   */
+  signupDeviceKey    String?
+  signupIpHash       String?
+  /**
+   * Optional short profile line (settings / future UI).
+   */
+  bio                String?
+  /**
+   * App preferences (chat, voice, rooms, security, notifications, appearance, data).
+   * Merged on PATCH; unknown keys are preserved for forward compatibility.
+   */
+  preferences        Json     @default("{}")
+
+  /**
+   * Authenticator-app TOTP (RFC 6238). Pending secret = setup in progress; backup hashes = bcrypt of one-time codes.
+   */
+  twoFactorEnabled       Boolean  @default(false)
+  twoFactorSecret        String?
+  twoFactorPendingSecret String?
+  twoFactorBackupHashes  Json      @default("[]")
+
+  // Relations
+  subscriptions         Subscription[]
+  referralsMade         Referral[]             @relation("Referrer")
+  referralReceived      Referral?              @relation("ReferredUser")
+  voiceRoomsHosted      VoiceRoom[]            @relation("VoiceRoomHost")
+  voiceRoomParticipants VoiceRoomParticipant[]
+  Payment               Payment[]
+  blocksInitiated       UserBlock[]            @relation("UserBlocksInitiated")
+  blocksReceived        UserBlock[]            @relation("UserBlocksReceived")
+  sessions              UserSession[]
+}
+
+/**
+ * Per-device login sessions (JWT carries `jti` matching this row).
+ */
+model UserSession {
+  id         String    @id @default(uuid())
+  userId     Int
+  jti        String    @unique
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+  userAgent  String?
+  ipHash     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+}
+
+/**
+ * blockerId has blocked blockedId. Either direction blocks all 1:1 interaction (messages, calls, joining each other’s rooms).
+ */
+model UserBlock {
+  id        Int      @id @default(autoincrement())
+  blockerId Int
+  blockedId Int
+  createdAt DateTime @default(now())
+
+  blocker User @relation("UserBlocksInitiated", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("UserBlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@index([blockerId])
+}
+
+model Plan {
+  id               String  @id
+  name             String
+  price            Float   @default(0)
+  durationDays     Int?
+  unlimitedCalls   Boolean @default(false)
+  dailyFreeMinutes Int?    @default(0)
+  active           Boolean @default(true)
+
+  subscriptions Subscription[]
+  Payment       Payment[]
+}
+
+model Subscription {
+  id         String    @id @default(uuid())
+  userId     Int
+  planId     String
+  /**
+   * Idempotency key for activation. When set, this subscription was created by a payment.
+   * Enforced unique so the same payment can never activate twice.
+   */
+  paymentId  String?   @unique
+  startTime  DateTime  @default(now())
+  expiryTime DateTime?
+  status     String    @default("active")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan    Plan     @relation(fields: [planId], references: [id])
+  payment Payment? @relation("PaymentActivation", fields: [paymentId], references: [id])
+
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+}
+
+model PlanActivationAudit {
+  id        String   @id @default(cuid())
+  paymentId String   @unique
+  userId    Int
+  planId    String
+  createdAt DateTime @default(now())
+  metadata  Json?
+
+  @@index([userId, createdAt])
+  @@index([planId, createdAt])
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  userId         Int
+  planId         String
+  amount         Float
+  currency       String   @default("UGX")
+  paymentMethod  String   @default("mobile_money") // mobile_money | crypto | card
+  provider       String // MTN | AIRTEL | USDT_TRC20 | STRIPE | FLUTTERWAVE ...
+  gtnNumber      String?
+  phone          String?
+  status         String   @default("created") // created | pending | succeeded | failed | expired | cancelled
+  idempotencyKey String?  @unique
+  reference      String?  @unique
+  providerTxnId  String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan       Plan          @relation(fields: [planId], references: [id])
+  /**
+   * One-to-one link to the Subscription created by this payment (idempotent activation).
+   */
+  activation Subscription? @relation("PaymentActivation")
+
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+}
+
+model PaymentProviderCapability {
+  id            String   @id @default(cuid())
+  paymentMethod String // mobile_money | crypto | card
+  provider      String // MTN | AIRTEL | USDT_TRC20 | GATEWAY ...
+  country       String // ISO-2, e.g. UG
+  currency      String // ISO-3, e.g. UGX
+  active        Boolean  @default(true)
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([paymentMethod, provider, country, currency])
+  @@index([active])
+  @@index([paymentMethod, provider, country])
+}
+
+model Counter {
+  id     Int @id @default(1)
+  nextId Int @default(691000001)
+}
+
+model Referral {
+  id                   Int       @id @default(autoincrement())
+  referrerId           Int
+  referredUserId       Int?      @unique
+  referredName         String
+  /**
+   * Minutes credited to referrer when status → completed
+   */
+  bonusMinutes         Int       @default(10)
+  /**
+   * Minutes credited to new user when verified (signup)
+   */
+  referredBonusMinutes Int       @default(5)
+  status               String    @default("pending")
+  source               String?
+  sourceMeta           String?
+  clickedAt            DateTime?
+  verifiedAt           DateTime?
+  completedAt          DateTime?
+  rewardedAt           DateTime?
+  completionTrigger    String?
+  deviceKey            String?
+  signupIpHash         String?
+  createdAt            DateTime  @default(now())
+
+  referrer     User  @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredUser User? @relation("ReferredUser", fields: [referredUserId], references: [id])
+}
+
+/**
+ * Server-side referral link click analytics
+ */
+model ReferralClick {
+  id              String   @id @default(uuid())
+  refSubscriberId Int
+  clickedAt       DateTime @default(now())
+  source          String?
+  sourceMeta      String?
+  deviceKey       String?
+  ipHash          String?
+
+  @@index([refSubscriberId])
+  @@index([clickedAt])
+}
+
+model VoiceRoom {
+  id              String    @id @default(uuid())
+  name            String
+  createdBy       Int
+  privacy         String    @default("public")
+  maxParticipants Int       @default(50)
+  status          String    @default("active")
+  endedAt         DateTime?
+  createdAt       DateTime  @default(now())
+
+  host         User                   @relation("VoiceRoomHost", fields: [createdBy], references: [id], onDelete: Cascade)
+  participants VoiceRoomParticipant[]
+  messages     VoiceRoomMessage[]
+  reactions    VoiceRoomReaction[]
+}
+
+model VoiceRoomParticipant {
+  id          String    @id @default(uuid())
+  roomId      String
+  userId      Int
+  role        String    @default("participant")
+  joinedAt    DateTime  @default(now())
+  leftAt      DateTime?
+  minutesUsed Float     @default(0)
+  paidAmount  Float     @default(0)
+  muted       Boolean   @default(false)
+
+  room VoiceRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+}
+
+model VoiceRoomMessage {
+  id        Int      @id @default(autoincrement())
+  roomId    String
+  senderId  Int
+  content   String
+  type      String   @default("text")
+  createdAt DateTime @default(now())
+
+  room VoiceRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+model VoiceRoomReaction {
+  id           String   @id @default(uuid())
+  roomId       String
+  userId       Int
+  targetUserId Int?
+  emoji        String
+  createdAt    DateTime @default(now())
+
+  room VoiceRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+// App-to-app call tracking (stored for missed/outgoing/incoming history)
+model Call {
+  id Int @id @default(autoincrement())
+
+  callerPhone   String
+  receiverPhone String
+
+  callerUserId   Int?
+  receiverUserId Int?
+
+  status     String
+  duration   Int?
+  createdAt  DateTime  @default(now())
+  answeredAt DateTime?
+
+  /**
+   * Billable minutes charged during call (server-side ticks)
+   */
+  minutesBilled   Int   @default(0)
+  freeMinutesUsed Float @default(0)
+}
+
+// Private chat messages + optional room messages
+model Message {
+  id Int @id @default(autoincrement())
+
+  fromUserId Int
+  toUserId   Int?
+
+  roomId         String?
+  type           String
+  content        String
+  /**
+   * 1:1 only: sent -> delivered -> read (WhatsApp-style ticks)
+   */
+  deliveryStatus String  @default("sent")
+
+  createdAt DateTime @default(now())
+}
+
+/**
+ * GTN console operators — separate from app User; authenticates via /api/admin/auth/login.
+ */
+model AdminUser {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  password      String
+  name          String?
+  /**
+   * superadmin | support — legacy "admin" is treated as superadmin in RBAC.
+   */
+  role          String   @default("support")
+  /**
+   * Increment to invalidate all admin JWTs (logout all sessions).
+   */
+  tokenVersion  Int      @default(0)
+  /**
+   * Failed password attempts (reset on success). Lockout after threshold.
+   */
+  failedLoginCount Int    @default(0)
+  lockedUntil      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  auditLogs AdminAuditLog[]
+}
+
+/**
+ * Append-only record of admin actions (mutations in later phases).
+ */
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  adminUserId Int
+  action      String
+  entity      String?
+  entityId    String?
+  payload     Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  admin AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId, createdAt])
+  @@index([entity, entityId])
+}

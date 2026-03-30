@@ -1,0 +1,39 @@
+{
+  "name": "gtn-backend",
+  "version": "1.0.0",
+  "description": "Backend for GTN app",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "node prisma/seed.js",
+    "admin:create-user": "node scripts/create-admin.js",
+    "admin:reset-password": "node scripts/reset-admin-password.js",
+    "admin:list-users": "node scripts/list-admin-users.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.2",
+    "bcryptjs": "3.0.3",
+    "cors": "2.8.6",
+    "dotenv": "17.3.1",
+    "express": "5.2.1",
+    "jsonwebtoken": "9.0.3",
+    "nodemailer": "^8.0.3",
+    "otplib": "^13.4.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.3",
+    "stripe": "^17.4.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "nodemon": "3.1.14",
+    "prisma": "^6.12.0"
+  }
+}
