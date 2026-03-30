@@ -242,6 +242,7 @@ From `backend/`:
 | [`backend/docs/VOICE_ROOMS.md`](backend/docs/VOICE_ROOMS.md) | Voice rooms (mesh, chat, billing) |
 | [`backend/docs/GO_LIVE_ROLLOUT.md`](backend/docs/GO_LIVE_ROLLOUT.md) | Rollout / go-live checklist |
 | [`backend/README.md`](backend/README.md) | Short backend index + session / referral reminders |
+| [`docs/DEPLOYMENT_ENV.md`](docs/DEPLOYMENT_ENV.md) | **Render + Vercel** environment variables checklist |
 
 ---
 
