@@ -133,7 +133,18 @@ io.on("connection", async (socket) => {
 
   // Call signaling (WebRTC offer/answer/ICE via simple-peer)
   // callId: DB row from POST /api/calls/start (forwarded so callee can POST /calls/end)
-  socket.on("call_user", ({ fromUserId, toUserId, signal, callId }) => {
+  socket.on("call_user", ({ fromUserId, toUserId, toUserDbId, signal, callId }) => {
+    // Prefer routing by authenticated db id room when available (avoids phone formatting mismatches).
+    const toDbId = Number(toUserDbId);
+    if (Number.isFinite(toDbId) && toDbId > 0) {
+      io.to(`user:${toDbId}`).emit("incoming_call", {
+        fromUserId,
+        fromUserDbId: socket.userId ?? null,
+        signal,
+        callId,
+      });
+      return;
+    }
     let toKey = toUserId;
     try {
       toKey = normalizePhoneE164(toUserId);
@@ -145,10 +156,19 @@ io.on("connection", async (socket) => {
       socket.emit("call_failed", { reason: "offline", toUserId: toKey });
       return;
     }
-    io.to(receiverSocket).emit("incoming_call", { fromUserId, signal, callId });
+    io.to(receiverSocket).emit("incoming_call", {
+      fromUserId,
+      fromUserDbId: socket.userId ?? null,
+      signal,
+      callId,
+    });
   });
 
-  socket.on("answer_call", ({ toUserId, signal }) => {
+  socket.on("answer_call", ({ toUserId, toUserDbId, signal }) => {
+    const toDbId = Number(toUserDbId);
+    if (Number.isFinite(toDbId) && toDbId > 0) {
+      io.to(`user:${toDbId}`).emit("call_answered", signal);
+    } else {
     let toKey = toUserId;
     try {
       toKey = normalizePhoneE164(toUserId);
@@ -157,6 +177,7 @@ io.on("connection", async (socket) => {
     }
     const callerSocket = onlineUsers.get(toKey);
     if (callerSocket) io.to(callerSocket).emit("call_answered", signal);
+    }
 
     // Persist answered status for missed-call history.
     // Assumption: Socket `register` stores `userId` keys as E.164 phone strings.
@@ -183,7 +204,12 @@ io.on("connection", async (socket) => {
     }
   });
 
-  socket.on("end_call", ({ toUserId }) => {
+  socket.on("end_call", ({ toUserId, toUserDbId }) => {
+    const toDbId = Number(toUserDbId);
+    if (Number.isFinite(toDbId) && toDbId > 0) {
+      io.to(`user:${toDbId}`).emit("call_ended");
+      return;
+    }
     let toKey = toUserId;
     try {
       toKey = normalizePhoneE164(toUserId);
@@ -194,7 +220,12 @@ io.on("connection", async (socket) => {
     if (receiverSocket) io.to(receiverSocket).emit("call_ended");
   });
 
-  socket.on("reject_call", ({ toUserId }) => {
+  socket.on("reject_call", ({ toUserId, toUserDbId }) => {
+    const toDbId = Number(toUserDbId);
+    if (Number.isFinite(toDbId) && toDbId > 0) {
+      io.to(`user:${toDbId}`).emit("call_rejected");
+      return;
+    }
     let toKey = toUserId;
     try {
       toKey = normalizePhoneE164(toUserId);
